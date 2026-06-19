@@ -37,7 +37,7 @@ const reportStorage = new CloudinaryStorage({
   params: async (req, file) => ({
     folder: 'hospital_reports',
     resource_type: getResourceType(file.mimetype),
-    public_id: `report_${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`,
+    public_id: `report_${Date.now()}_${file.originalname.replace(/\s+/g, '_').replace(/\.[^.]+$/, '')}`,
   }),
 })
 
