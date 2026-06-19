@@ -4,11 +4,21 @@ const { protect, authorize } = require('../middleware/auth')
 const { uploadReport } = require('../utils/cloudinary')
 
 // POST /api/reports — lab assistant uploads
-router.post('/', protect, authorize('lab_assistant'), uploadReport.single('file'), async (req, res) => {
+router.post('/', protect, authorize('lab_assistant'), (req, res, next) => {
+  uploadReport.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Cloudinary upload error:', err)
+      return res.status(400).json({ message: `File upload failed: ${err.message}` })
+    }
+    next()
+  })
+}, async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'File upload failed — file nahi mila. Check Cloudinary credentials aur file type.' })
+      return res.status(400).json({ message: 'File nahi mila — koi file send karo' })
     }
+
+    delete req.body.files  // safety: purane client se JSON string aa sakti thi
 
     const { parchiNo, reportType, patientName, doctorName, department, diagnosis } = req.body
 
@@ -19,12 +29,14 @@ router.post('/', protect, authorize('lab_assistant'), uploadReport.single('file'
     const fileData = {
       name: reportType || req.file.originalname,
       type: reportType,
-      url: req.file.path || req.file.secure_url,
-      publicId: req.file.filename,
-      size: req.file.size
-        ? `${(req.file.size / 1024 / 1024).toFixed(1)} MB`
-        : 'Unknown',
+      url: req.file.path || req.file.secure_url || req.file.url,
+      publicId: req.file.filename || req.file.public_id,
+      size: req.file.size ? `${(req.file.size / 1024 / 1024).toFixed(1)} MB` : 'Unknown',
       uploadedBy: req.user._id,
+    }
+
+    if (!fileData.url) {
+      return res.status(500).json({ message: 'Cloudinary URL nahi mili — CLOUDINARY_* env vars check karo Render pe' })
     }
 
     let report = await Report.findOne({ parchiNo })
@@ -33,11 +45,7 @@ router.post('/', protect, authorize('lab_assistant'), uploadReport.single('file'
       await report.save()
     } else {
       report = await Report.create({
-        parchiNo,
-        patientName,
-        doctorName,
-        department,
-        diagnosis,
+        parchiNo, patientName, doctorName, department, diagnosis,
         files: [fileData],
       })
     }
@@ -95,7 +103,7 @@ router.get('/', protect, authorize('district_admin', 'hospital_manager', 'lab_as
   }
 })
 
-// GET /api/reports/:id/download — increment download count
+// GET /api/reports/:id/download
 router.get('/:id/download', async (req, res) => {
   try {
     const report = await Report.findById(req.params.id)
