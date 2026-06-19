@@ -8,22 +8,57 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// For report uploads (PDF + images)
+const getResourceType = (mimetype) => {
+  if (mimetype.startsWith('image/')) return 'image'
+  return 'raw'
+}
+
+const allowedMimetypes = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]
+
+const reportFilter = (req, file, cb) => {
+  if (allowedMimetypes.includes(file.mimetype)) {
+    cb(null, true)
+  } else {
+    cb(new Error(`File type not allowed: ${file.mimetype}`), false)
+  }
+}
+
 const reportStorage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
     folder: 'hospital_reports',
-    resource_type: file.mimetype === 'application/pdf' ? 'raw' : 'image',
-    public_id: `report_${Date.now()}_${file.originalname.replace(/\s/g, '_')}`,
+    resource_type: getResourceType(file.mimetype),
+    public_id: `report_${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`,
   }),
 })
 
-// For profile images / event images
 const imageStorage = new CloudinaryStorage({
   cloudinary,
-  params: { folder: 'hospital_images', allowed_formats: ['jpg', 'jpeg', 'png', 'webp'] },
+  params: {
+    folder: 'hospital_images',
+    resource_type: 'image',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+  },
 })
 
-exports.uploadReport = multer({ storage: reportStorage, limits: { fileSize: 20 * 1024 * 1024 } })
-exports.uploadImage = multer({ storage: imageStorage, limits: { fileSize: 5 * 1024 * 1024 } })
+exports.uploadReport = multer({
+  storage: reportStorage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: reportFilter,
+})
+
+exports.uploadImage = multer({
+  storage: imageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+})
+
 exports.cloudinary = cloudinary
