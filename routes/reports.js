@@ -6,68 +6,113 @@ const { uploadReport } = require('../utils/cloudinary')
 // POST /api/reports — lab assistant uploads
 router.post('/', protect, authorize('lab_assistant'), uploadReport.single('file'), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'File upload failed — file nahi mila. Check Cloudinary credentials aur file type.' })
+    }
+
     const { parchiNo, reportType, patientName, doctorName, department, diagnosis } = req.body
+
+    if (!parchiNo) {
+      return res.status(400).json({ message: 'parchiNo required hai' })
+    }
+
     const fileData = {
       name: reportType || req.file.originalname,
       type: reportType,
-      url: req.file?.path || req.file?.secure_url,
-      publicId: req.file?.filename,
-      size: `${(req.file?.size / 1024 / 1024).toFixed(1)} MB`,
+      url: req.file.path || req.file.secure_url,
+      publicId: req.file.filename,
+      size: req.file.size
+        ? `${(req.file.size / 1024 / 1024).toFixed(1)} MB`
+        : 'Unknown',
       uploadedBy: req.user._id,
     }
+
     let report = await Report.findOne({ parchiNo })
     if (report) {
       report.files.push(fileData)
       await report.save()
     } else {
-      report = await Report.create({ parchiNo, patientName, doctorName, department, diagnosis, files: [fileData] })
+      report = await Report.create({
+        parchiNo,
+        patientName,
+        doctorName,
+        department,
+        diagnosis,
+        files: [fileData],
+      })
     }
+
     res.status(201).json({ success: true, data: report })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) {
+    console.error('Report POST error:', err)
+    res.status(500).json({ message: err.message })
+  }
 })
 
-// GET /api/reports/parchi/:parchiNo — patient looks up by parchi
+// GET /api/reports/parchi/:parchiNo — patient lookup
 router.get('/parchi/:parchiNo', async (req, res) => {
   try {
     const report = await Report.findOne({ parchiNo: req.params.parchiNo })
-    if (!report) return res.status(404).json({ message: 'No report found for this parchi number' })
+    if (!report) return res.status(404).json({ message: 'Is parchi number ka koi report nahi mila' })
     res.json(report)
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) {
+    console.error('Parchi GET error:', err)
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // GET /api/reports/analytics
 router.get('/analytics', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant'), async (req, res) => {
   try {
     const total = await Report.countDocuments()
-    const totalFiles = await Report.aggregate([{ $project: { count: { $size: '$files' } } }, { $group: { _id: null, total: { $sum: '$count' } } }])
+    const totalFiles = await Report.aggregate([
+      { $project: { count: { $size: '$files' } } },
+      { $group: { _id: null, total: { $sum: '$count' } } },
+    ])
     const totalDL = await Report.aggregate([
       { $unwind: '$files' },
-      { $group: { _id: null, total: { $sum: '$files.downloadCount' } } }
+      { $group: { _id: null, total: { $sum: '$files.downloadCount' } } },
     ])
-    res.json({ totalParchi: total, totalFiles: totalFiles[0]?.total || 0, totalDownloads: totalDL[0]?.total || 0 })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    res.json({
+      totalParchi: total,
+      totalFiles: totalFiles[0]?.total || 0,
+      totalDownloads: totalDL[0]?.total || 0,
+    })
+  } catch (err) {
+    console.error('Analytics error:', err)
+    res.status(500).json({ message: err.message })
+  }
 })
 
-// GET /api/reports — admin/manager
+// GET /api/reports — admin/manager list
 router.get('/', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant'), async (req, res) => {
   try {
     const reports = await Report.find().sort('-createdAt').limit(500)
     res.json(reports)
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) {
+    console.error('Reports GET error:', err)
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // GET /api/reports/:id/download — increment download count
 router.get('/:id/download', async (req, res) => {
   try {
     const report = await Report.findById(req.params.id)
-    if (!report) return res.status(404).json({ message: 'Not found' })
-    const fileIdx = req.query.fileIndex || 0
+    if (!report) return res.status(404).json({ message: 'Report nahi mila' })
+
+    const fileIdx = parseInt(req.query.fileIndex) || 0
     if (report.files[fileIdx]) {
-      report.files[fileIdx].downloadCount++
+      report.files[fileIdx].downloadCount = (report.files[fileIdx].downloadCount || 0) + 1
       await report.save()
       res.json({ url: report.files[fileIdx].url })
-    } else res.status(404).json({ message: 'File not found' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    } else {
+      res.status(404).json({ message: 'File nahi mili' })
+    }
+  } catch (err) {
+    console.error('Download error:', err)
+    res.status(500).json({ message: err.message })
+  }
 })
 
 module.exports = router
