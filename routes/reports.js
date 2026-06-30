@@ -28,7 +28,7 @@ router.post('/', protect, authorize('lab_assistant'), (req, res, next) => {
 
     const fileData = {
       name: reportType || req.file.originalname,
-      type: reportType,
+      fileType: reportType,
       url: req.file.path || req.file.secure_url || req.file.url,
       publicId: req.file.filename || req.file.public_id,
       size: req.file.size ? `${(req.file.size / 1024 / 1024).toFixed(1)} MB` : 'Unknown',
@@ -70,7 +70,7 @@ router.get('/parchi/:parchiNo', async (req, res) => {
 })
 
 // GET /api/reports/analytics
-router.get('/analytics', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant'), async (req, res) => {
+router.get('/analytics', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant', 'doctor_head'), async (req, res) => {
   try {
     const total = await Report.countDocuments()
     const totalFiles = await Report.aggregate([
@@ -92,8 +92,8 @@ router.get('/analytics', protect, authorize('district_admin', 'hospital_manager'
   }
 })
 
-// GET /api/reports — admin/manager list
-router.get('/', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant'), async (req, res) => {
+// GET /api/reports — admin/manager/doctor_head list
+router.get('/', protect, authorize('district_admin', 'hospital_manager', 'lab_assistant', 'doctor_head'), async (req, res) => {
   try {
     const reports = await Report.find().sort('-createdAt').limit(500)
     res.json(reports)

@@ -38,8 +38,8 @@ const reportSchema = new mongoose.Schema({
   doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   doctorName: String, department: String, diagnosis: String,
   files: [{
-    name: String, type: String,
-    url: String,             // Cloudinary URL
+    name: String, fileType: String,
+    url: String,
     publicId: String,
     size: String,
     uploadedAt: { type: Date, default: Date.now },
