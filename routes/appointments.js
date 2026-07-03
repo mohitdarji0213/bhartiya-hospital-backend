@@ -42,12 +42,19 @@ router.get('/analytics', protect, authorize('district_admin', 'hospital_manager'
 })
 
 // GET /api/appointments — admin/manager sees all
-router.get('/', protect, authorize('district_admin', 'hospital_manager', 'doctor_head'), async (req, res) => {
+router.get('/', protect, authorize('district_admin', 'hospital_manager', 'doctor_head', 'doctor', 'lab_assistant'), async (req, res) => {
   try {
-    const { dept, status, date } = req.query
+    const { dept, status } = req.query
     const filter = {}
     if (dept) filter.department = dept
     if (status) filter.status = status
+
+    if (req.user.role === 'doctor') {
+      filter.doctorId = req.user._id
+    } else if (req.user.role === 'doctor_head') {
+      filter.department = req.user.department
+    }
+
     const apts = await Appointment.find(filter).sort('-createdAt').limit(500)
     res.json(apts)
   } catch (err) { res.status(500).json({ message: err.message }) }
